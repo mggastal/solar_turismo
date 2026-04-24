@@ -712,9 +712,9 @@ function getMBD(){
   const rawPt=META_BD._raw_pt;
   const AGE_ORDER=["18-24","25-34","35-44","45-54","55-64","65+"];
 
-  // Se há filtro de campanha ativo, sempre usar raw (único modo que filtra por camp)
-  if(metaCampSel?.size>0){
-    if(!rawGa&&!rawPt) return null;
+  // Sempre usar raw — garante que o filtro de período do JS é aplicado corretamente
+  // Os dados pré-calculados divergem conforme os dias passam após a geração
+  if(rawGa||rawPt){
     const age=filterBdRaw(rawGa,r=>r.age).filter(v=>AGE_ORDER.includes(v.n))
       .sort((a,b)=>AGE_ORDER.indexOf(a.n)-AGE_ORDER.indexOf(b.n));
     const gender=filterBdRaw(rawGa,r=>r.gen).filter(v=>['female','male'].includes(v.n));
@@ -722,21 +722,15 @@ function getMBD(){
     return {age,gender,platform};
   }
 
+  // Fallback: dados pré-calculados (se raw não disponível)
   const key=getPeriodKey();
   if(key){
     const base=filtroLct?META_BD?.lct:META_BD?.all;
     if(base) return base[key]||base['all']||null;
     return META_BD[key]||META_BD['all']||null;
   }
-  if(!rawGa&&!rawPt){
-    const base=filtroLct?META_BD?.lct:META_BD?.all;
-    return base?.['all']||META_BD['all']||null;
-  }
-  const age=filterBdRaw(rawGa,r=>r.age).filter(v=>AGE_ORDER.includes(v.n))
-    .sort((a,b)=>AGE_ORDER.indexOf(a.n)-AGE_ORDER.indexOf(b.n));
-  const gender=filterBdRaw(rawGa,r=>r.gen).filter(v=>['female','male'].includes(v.n));
-  const platform=filterBdRaw(rawPt,r=>r.plat).slice(0,8);
-  return {age,gender,platform};
+  const base=filtroLct?META_BD?.lct:META_BD?.all;
+  return base?.['all']||META_BD['all']||null;
 }
 
 function buildTable(elId,data,mainCol){
