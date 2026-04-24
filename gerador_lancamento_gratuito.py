@@ -25,7 +25,7 @@ OUTPUT_FILE      = "index.html"
 
 NOME_CLIENTE     = "Solar Turismo"
 LOGO_LETRA       = "ST"
-COR_ACENTO       = "#e11d48"
+COR_ACENTO       = "#D4AF37"
 
 LANCAMENTO_COD   = "VIP"        # filtra campanhas; "" = ver tudo
 USAR_PESQUISA    = False            # False = oculta aba Pesquisa
