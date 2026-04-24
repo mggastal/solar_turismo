@@ -63,6 +63,14 @@ def download_thumb(url, d):
     except: return ""
 
 # ══ META ADS ══════════════════════════════════════════
+# Colunas de conversão somadas para "leads" nesta versão v2
+CONV_COLS = [
+    "Action FB Pixel Custom (Offsite Conversion)",
+    "Action Messaging Conversations Started (Onsite Conversion)",
+    "Action Leads",
+    "Conversion Contact Total",
+]
+
 def load_meta():
     print("  Lendo meta-ads...")
     df=pd.read_csv(URL_META)
@@ -73,14 +81,17 @@ def load_meta():
         "Impressions":"impressions",
         "Action Link Clicks":"link_clicks",
         "Action Landing Page View":"page_view",
-        "Action Leads":"leads"
     })
     df["date"]=pd.to_datetime(df["date"],errors="coerce")
-    for c in ["spend","impressions","link_clicks","page_view","leads"]:
+    for c in ["spend","impressions","link_clicks","page_view"]:
         if c in df.columns: df[c]=to_num(df[c])
+    # Somar todas as colunas de conversão disponíveis
+    df["leads"] = sum(to_num(df[c]) for c in CONV_COLS if c in df.columns)
+    print(f"     Conversões somadas: {', '.join(c for c in CONV_COLS if c in df.columns)}")
     df["is_lct"]=df["campaign"].str.contains(LANCAMENTO_COD,na=False,case=False) if LANCAMENTO_COD else True
     df=df.dropna(subset=["date"])
     print(f"     {len(df)} linhas | {df['date'].min().date()} → {df['date'].max().date()}")
+    print(f"     Total conversões: {df['leads'].sum():.0f}")
     return df
 
 def calc_kpis(p):
@@ -198,6 +209,12 @@ def meta_breakdowns(df):
     print("  Lendo breakdowns...")
     hoje_bd=pd.Timestamp(date.today())
     AGE_ORDER=["18-24","25-34","35-44","45-54","55-64","65+"]
+    # Colunas de conversão disponíveis nos breakdowns (FB Pixel Custom não existe lá)
+    CONV_COLS_BD = [
+        "Action Leads",
+        "Action Messaging Conversations Started (Onsite Conversion)",
+        "Conversion Contact Total",
+    ]
     def seg(agg,dim):
         agg=agg[agg["spend"]>0].copy()
         agg["cpl"]=(agg["spend"]/agg["leads"]).where(agg["leads"]>0).round(2)
@@ -206,47 +223,67 @@ def meta_breakdowns(df):
         df_ga=pd.read_csv(URL_GA)
         df_ga["date"]=pd.to_datetime(df_ga["Date"],errors="coerce")
         df_ga["spend"]=to_num(df_ga["Spend (Cost, Amount Spent)"])
-        df_ga["leads"]=to_num(df_ga["Action Leads"])
+        # Soma das colunas disponíveis
+        df_ga["leads"]=sum(to_num(df_ga[c]) for c in CONV_COLS_BD if c in df_ga.columns)
         df_ga["age"]=df_ga["Age (Breakdown)"].astype(str)
         df_ga["gender"]=df_ga["Gender (Breakdown)"].astype(str)
+        if "Campaign Name" in df_ga.columns and LANCAMENTO_COD:
+            df_ga["is_lct"]=df_ga["Campaign Name"].str.contains(LANCAMENTO_COD,na=False,case=False)
+        else:
+            df_ga["is_lct"]=True
         df_ga=df_ga.dropna(subset=["date"])
     except Exception as e: print(f"  Aviso GA: {e}"); df_ga=pd.DataFrame()
     try:
         df_pt=pd.read_csv(URL_PT)
         df_pt["date"]=pd.to_datetime(df_pt["Date"],errors="coerce")
         df_pt["spend"]=to_num(df_pt["Spend (Cost, Amount Spent)"])
-        df_pt["leads"]=to_num(df_pt["Action Leads"])
+        # Soma das colunas disponíveis
+        df_pt["leads"]=sum(to_num(df_pt[c]) for c in CONV_COLS_BD if c in df_pt.columns)
         df_pt["platform"]=df_pt["Platform Position (Breakdown)"].astype(str)
+        if "Campaign Name" in df_pt.columns and LANCAMENTO_COD:
+            df_pt["is_lct"]=df_pt["Campaign Name"].str.contains(LANCAMENTO_COD,na=False,case=False)
+        else:
+            df_pt["is_lct"]=True
         df_pt=df_pt.dropna(subset=["date"])
     except Exception as e: print(f"  Aviso PT: {e}"); df_pt=pd.DataFrame()
 
     result={}
     for pname,n in [("1",1),("7",7),("14",14),("30",30),("all",0)]:
         start=hoje_bd-pd.Timedelta(days=n-1) if n>0 else None
-        pga=df_ga[(df_ga["date"]>=start)&(df_ga["date"]<=hoje_bd)] if (n>0 and len(df_ga)>0) else df_ga
-        ppt=df_pt[(df_pt["date"]>=start)&(df_pt["date"]<=hoje_bd)] if (n>0 and len(df_pt)>0) else df_pt
-        age_d=[]; gen_d=[]; plat_d=[]
-        if len(pga)>0:
-            ag_age=pga[pga["age"].isin(AGE_ORDER)].groupby("age").agg(spend=("spend","sum"),leads=("leads","sum")).reset_index()
-            ag_age["_o"]=ag_age["age"].apply(lambda x:AGE_ORDER.index(x) if x in AGE_ORDER else 99)
-            age_d=seg(ag_age.sort_values("_o"),"age")
-            ag_gen=pga[pga["gender"].isin(["female","male"])].groupby("gender").agg(spend=("spend","sum"),leads=("leads","sum")).reset_index().sort_values("leads",ascending=False)
-            gen_d=seg(ag_gen,"gender")
-        if len(ppt)>0:
-            ag_pt=ppt.groupby("platform").agg(spend=("spend","sum"),leads=("leads","sum")).reset_index().sort_values("leads",ascending=False).head(8)
-            plat_d=seg(ag_pt,"platform")
-        result[pname]={"age":age_d,"gender":gen_d,"platform":plat_d}
-    # Raw para datas livres
+        # Aplicar filtro de lançamento em cada subset
+        for lname,lct_filter in [("lct",True),("all",None)]:
+            if len(df_ga)>0:
+                pga=df_ga if lct_filter is None else df_ga[df_ga["is_lct"]]
+                pga=pga[(pga["date"]>=start)&(pga["date"]<=hoje_bd)] if n>0 else pga
+            else: pga=df_ga
+            if len(df_pt)>0:
+                ppt=df_pt if lct_filter is None else df_pt[df_pt["is_lct"]]
+                ppt=ppt[(ppt["date"]>=start)&(ppt["date"]<=hoje_bd)] if n>0 else ppt
+            else: ppt=df_pt
+            age_d=[]; gen_d=[]; plat_d=[]
+            if len(pga)>0:
+                ag_age=pga[pga["age"].isin(AGE_ORDER)].groupby("age").agg(spend=("spend","sum"),leads=("leads","sum")).reset_index()
+                ag_age["_o"]=ag_age["age"].apply(lambda x:AGE_ORDER.index(x) if x in AGE_ORDER else 99)
+                age_d=seg(ag_age.sort_values("_o"),"age")
+                ag_gen=pga[pga["gender"].isin(["female","male"])].groupby("gender").agg(spend=("spend","sum"),leads=("leads","sum")).reset_index().sort_values("leads",ascending=False)
+                gen_d=seg(ag_gen,"gender")
+            if len(ppt)>0:
+                ag_pt=ppt.groupby("platform").agg(spend=("spend","sum"),leads=("leads","sum")).reset_index().sort_values("leads",ascending=False).head(8)
+                plat_d=seg(ag_pt,"platform")
+            if lname not in result: result[lname]={}
+            result[lname][pname]={"age":age_d,"gender":gen_d,"platform":plat_d}
+
+    # Raw para datas livres — incluir flag is_lct
     raw_ga=[]
     if len(df_ga)>0:
         for _,r in df_ga.iterrows():
             if pd.isna(r['date']): continue
-            raw_ga.append({'d':r['date'].strftime('%d/%m'),'age':str(r['age']),'gen':str(r['gender']),'sp':round(float(r['spend']),2),'ld':int(r['leads'])})
+            raw_ga.append({'d':r['date'].strftime('%d/%m'),'age':str(r['age']),'gen':str(r['gender']),'sp':round(float(r['spend']),2),'ld':int(r['leads']),'lct':bool(r['is_lct'])})
     raw_pt=[]
     if len(df_pt)>0:
         for _,r in df_pt.iterrows():
             if pd.isna(r['date']): continue
-            raw_pt.append({'d':r['date'].strftime('%d/%m'),'plat':str(r['platform']),'sp':round(float(r['spend']),2),'ld':int(r['leads'])})
+            raw_pt.append({'d':r['date'].strftime('%d/%m'),'plat':str(r['platform']),'sp':round(float(r['spend']),2),'ld':int(r['leads']),'lct':bool(r['is_lct'])})
     result['_raw_ga']=raw_ga; result['_raw_pt']=raw_pt
     return result
 
@@ -319,7 +356,7 @@ def inject_all(tpl, meta_k, meta_d, meta_dc, meta_raw_c, meta_t, meta_bd, pes):
 # ══ MAIN ═══════════════════════════════════════════════
 def main():
     print("="*60)
-    print(f"Dashboard Lançamento Gratuito — {NOME_CLIENTE} / {LANCAMENTO_COD or 'Todos'}")
+    print(f"Dashboard Lançamento Gratuito v2 (All Conv) — {NOME_CLIENTE} / {LANCAMENTO_COD or 'Todos'}")
     print("="*60)
     img_dir=Path("imgs"); img_dir.mkdir(exist_ok=True)
 
