@@ -19,6 +19,7 @@ from pathlib import Path
 # ══════════════════════════════════════════════════════
 # CONFIG
 # ══════════════════════════════════════════════════════
+
 SHEET_ID         = "1PBMA1aWL4SzzCgq6h91d1wH4KFH3DHyKb3LP2E2CvRk"
 TEMPLATE_FILE    = "dashboard_lancamento_gratuito.html"
 OUTPUT_FILE      = "index.html"
@@ -220,13 +221,15 @@ def meta_breakdowns(df):
     print("  Lendo breakdowns...")
     hoje_bd=pd.Timestamp(date.today())
     AGE_ORDER=["18-24","25-34","35-44","45-54","55-64","65+"]
-    # Colunas de conversão disponíveis nos breakdowns (FB Pixel Custom não existe lá)
+    # Soma de todas as colunas de conversão disponíveis no breakdown
+    # Adicione Action FB Pixel Custom (Offsite Conversion) nas abas do Sheets para incluir
     CONV_COLS_BD = [
-        "Action Leads",
+        "Action FB Pixel Custom (Offsite Conversion)",
         "Action Messaging Conversations Started (Onsite Conversion)",
+        "Action Leads",
         "Conversion Contact Total",
     ]
-    def seg(agg,dim):
+    def seg(agg, dim):
         agg=agg[agg["spend"]>0].copy()
         agg["cpl"]=(agg["spend"]/agg["leads"]).where(agg["leads"]>0).round(2)
         return [{"n":str(r[dim]),"spend":round(float(r["spend"]),2),"ld":int(r["leads"]),"cpl":safe(r["cpl"])} for _,r in agg.iterrows()]
@@ -234,8 +237,12 @@ def meta_breakdowns(df):
         df_ga=pd.read_csv(URL_GA)
         df_ga["date"]=pd.to_datetime(df_ga["Date"],errors="coerce")
         df_ga["spend"]=to_num(df_ga["Spend (Cost, Amount Spent)"])
-        # Soma das colunas disponíveis
-        df_ga["leads"]=sum(to_num(df_ga[c]) for c in CONV_COLS_BD if c in df_ga.columns)
+        # Diagnóstico: mostrar todas as colunas recebidas
+        print(f"     GA todas as colunas ({len(df_ga.columns)}): {list(df_ga.columns)}")
+        # Soma das colunas disponíveis — inclui FB Pixel Custom se existir na aba
+        available=[c for c in CONV_COLS_BD if c in df_ga.columns]
+        print(f"     GA colunas de conv encontradas: {available}")
+        df_ga["leads"]=sum(to_num(df_ga[c]) for c in available) if available else pd.Series(0, index=df_ga.index)
         df_ga["age"]=df_ga["Age (Breakdown)"].astype(str)
         df_ga["gender"]=df_ga["Gender (Breakdown)"].astype(str)
         if "Campaign Name" in df_ga.columns and LANCAMENTO_COD:
@@ -248,8 +255,12 @@ def meta_breakdowns(df):
         df_pt=pd.read_csv(URL_PT)
         df_pt["date"]=pd.to_datetime(df_pt["Date"],errors="coerce")
         df_pt["spend"]=to_num(df_pt["Spend (Cost, Amount Spent)"])
-        # Soma das colunas disponíveis
-        df_pt["leads"]=sum(to_num(df_pt[c]) for c in CONV_COLS_BD if c in df_pt.columns)
+        # Diagnóstico: mostrar todas as colunas recebidas
+        print(f"     PT todas as colunas ({len(df_pt.columns)}): {list(df_pt.columns)}")
+        # Soma das colunas disponíveis — inclui FB Pixel Custom se existir na aba
+        available_pt=[c for c in CONV_COLS_BD if c in df_pt.columns]
+        print(f"     PT colunas de conv encontradas: {available_pt}")
+        df_pt["leads"]=sum(to_num(df_pt[c]) for c in available_pt) if available_pt else pd.Series(0, index=df_pt.index)
         df_pt["platform"]=df_pt["Platform Position (Breakdown)"].astype(str)
         if "Campaign Name" in df_pt.columns and LANCAMENTO_COD:
             df_pt["is_lct"]=df_pt["Campaign Name"].str.contains(LANCAMENTO_COD,na=False,case=False)
@@ -261,7 +272,6 @@ def meta_breakdowns(df):
     result={}
     for pname,n in [("1",1),("7",7),("14",14),("30",30),("all",0)]:
         start=hoje_bd-pd.Timedelta(days=n-1) if n>0 else None
-        # Aplicar filtro de lançamento em cada subset
         for lname,lct_filter in [("lct",True),("all",None)]:
             if len(df_ga)>0:
                 pga=df_ga if lct_filter is None else df_ga[df_ga["is_lct"]]
@@ -284,17 +294,20 @@ def meta_breakdowns(df):
             if lname not in result: result[lname]={}
             result[lname][pname]={"age":age_d,"gender":gen_d,"platform":plat_d}
 
-    # Raw para datas livres — incluir flag is_lct
     raw_ga=[]
     if len(df_ga)>0:
         for _,r in df_ga.iterrows():
             if pd.isna(r['date']): continue
-            raw_ga.append({'d':r['date'].strftime('%d/%m'),'age':str(r['age']),'gen':str(r['gender']),'sp':round(float(r['spend']),2),'ld':int(r['leads']),'lct':bool(r['is_lct']),'camp':str(r['Campaign Name']) if 'Campaign Name' in r.index else ''})
+            raw_ga.append({'d':r['date'].strftime('%d/%m'),'age':str(r['age']),'gen':str(r['gender']),
+                           'sp':round(float(r['spend']),2),'ld':int(r['leads']),
+                           'lct':bool(r['is_lct']),'camp':str(r['Campaign Name']) if 'Campaign Name' in r.index else ''})
     raw_pt=[]
     if len(df_pt)>0:
         for _,r in df_pt.iterrows():
             if pd.isna(r['date']): continue
-            raw_pt.append({'d':r['date'].strftime('%d/%m'),'plat':str(r['platform']),'sp':round(float(r['spend']),2),'ld':int(r['leads']),'lct':bool(r['is_lct']),'camp':str(r['Campaign Name']) if 'Campaign Name' in r.index else ''})
+            raw_pt.append({'d':r['date'].strftime('%d/%m'),'plat':str(r['platform']),
+                           'sp':round(float(r['spend']),2),'ld':int(r['leads']),
+                           'lct':bool(r['is_lct']),'camp':str(r['Campaign Name']) if 'Campaign Name' in r.index else ''})
     result['_raw_ga']=raw_ga; result['_raw_pt']=raw_pt
     return result
 
