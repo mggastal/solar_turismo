@@ -24,10 +24,10 @@ CPL_BOM          = 2.5    # Custo por Lead ≤ 5 → verde | 5-10 → amarelo | 
 CPL_MEDIO        = 3.0
 CTR_BOM          = 1.0    # CTR ≥ 1.2% → verde | 0.8-1.2% → amarelo | abaixo → vermelho
 CTR_MEDIO        = 0.6
-CR_BOM           = 0.1   # Connect Rate ≥ 40% → verde | 25-40% → amarelo | abaixo → vermelho
-CR_MEDIO         = 0.01
-TX_CONV_BOM      = 0.1   # Taxa Conversão (Lead/PV) ≥ 30% → verde | 15-30% → amarelo | abaixo → vermelho
-TX_CONV_MEDIO    = 0.01
+CR_BOM           = 65   # Connect Rate ≥ 40% → verde | 25-40% → amarelo | abaixo → vermelho
+CR_MEDIO         = 55
+TX_CONV_BOM      = 30   # Taxa Conversão (Lead/PV) ≥ 30% → verde | 15-30% → amarelo | abaixo → vermelho
+TX_CONV_MEDIO    = 22
 CPM_BOM          = 5.0    # CPM ≤ 5 → verde | 5-12 → amarelo | acima → vermelho (menor = melhor)
 CPM_MEDIO        = 12.0
 
