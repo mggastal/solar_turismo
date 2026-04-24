@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Gerador Dashboard Lançamento Gratuito v1"""
+"""
+Gerador Dashboard Lançamento Gratuito v2 — ALL CONVERSIONS
+==========================================================
+DIFERENÇA vs v1: leads = soma de 4 colunas de conversão:
+  - Action FB Pixel Custom (Offsite Conversion)
+  - Action Messaging Conversations Started (Onsite Conversion)
+  - Action Leads
+  - Conversion Contact Total
+
+ATENÇÃO: este gerador deve ser usado JUNTO com o template
+  dashboard_lancamento_gratuito_v2_all_conv.html
+"""
 
 import pandas as pd, json, re, hashlib, requests
 from datetime import date
